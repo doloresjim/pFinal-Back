@@ -6,13 +6,14 @@ const bodyParser = require("body-parser");
 const winston = require("winston");
 const jwt = require("jsonwebtoken");
 const speakeasy = require("speakeasy");
-const bcrypt = require("bcryptjs");  // Se agregó bcrypt 
-require("dotenv").config(); 
+const bcrypt = require("bcryptjs");
+require("dotenv").config();
 
 const { SECRET_KEY } = process.env;
 const PORT = 5001;
 
-const serviceAccount = require("./configs/serviceAccountKey.json");
+// 🔥 Leer las credenciales de Firebase desde variables de entorno
+const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
 
 if (!admin.apps.length) {
   admin.initializeApp({
