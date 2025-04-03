@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node app.js",
+    "postinstall": "npm rebuild bcrypt",
     "dev": "nodemon app.js"
   },
   "keywords": [],
