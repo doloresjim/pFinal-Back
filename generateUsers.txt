@@ -1,0 +1,66 @@
+const { faker } = require('@faker-js/faker');
+const axios = require('axios');
+
+// Función para generar un usuario aleatorio
+const generateRandomUser = () => { 
+  return { 
+    email: faker.internet.email(),
+    username: faker.internet.username(),
+    password: faker.internet.password(),
+    nombre: faker.person.firstName(),
+    app: faker.person.lastName(),
+    apm: faker.person.lastName(),
+    grupo: `Grupo${Math.floor(Math.random() * 5) + 1}`,
+  };
+};
+
+// Función para registrar un usuario (en este caso hace una solicitud HTTP POST)
+const registerUser = async (user) => {
+  try { 
+    const response = await axios.post('http://localhost:5001/api/register', user, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    if (response.status === 201) {
+      console.log(`Usuario ${user.username} registrado correctamente`);
+      await logRequest("SUCCESS", user.username, "Registro exitoso");
+    } else {
+      console.log(`Error al registrar usuario ${user.username}`);
+      await logRequest("ERROR", user.username, "Error en el registro");
+    }
+  } catch (error) { 
+    if (error.response?.status === 429) {
+      console.log(`Too many requests. Limite alcanzado para ${user.username}`);
+    } else {
+      console.error(`Error al hacer solicitud para ${user.username}:`, error.response?.data || error.message);
+    }
+    await logRequest("ERROR", user.username, error.message);
+  }
+};
+
+// Función para enviar los logs a app.js
+const logRequest = async (status, username, message) => {
+  const logData = {
+    timestamp: new Date().toISOString(),
+    username,
+    status,
+    message,
+  };
+
+  // Aquí podrías enviar el log al servidor para guardarlo en el sistema de logs.
+};
+
+// Función para generar y registrar varios usuarios con retraso
+const generateUsers = async (numUsers) => {
+  for (let i = 0; i < numUsers; i++) {
+    const user = generateRandomUser();
+    await registerUser(user);  // Registra cada usuario
+
+    // Retraso de 200ms entre solicitudes para simular tráfico más realista
+    // Esto permitirá que no se envíen todas las solicitudes al mismo tiempo
+    await new Promise(resolve => setTimeout(resolve, 200));  // Retraso de 200ms
+  }
+};
+
+// Ejecuta la función
+generateUsers(120);  // Generar 220 usuarios para exceder el límite de solicitudes
