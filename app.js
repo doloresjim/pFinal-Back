@@ -1,4 +1,3 @@
-//SERVIDOR 1
 const express = require("express");
 const admin = require("firebase-admin");
 const cors = require("cors");
@@ -10,7 +9,7 @@ const bcrypt = require("bcryptjs");
 require("dotenv").config();
 
 const { SECRET_KEY } = process.env;
-const PORT = 5001;
+const PORT = process.env.PORT || 5001;
 
 // 🔥 Leer las credenciales de Firebase desde variables de entorno
 const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
@@ -27,14 +26,36 @@ const routes = require("./routes");
 const server = express();
 const db = admin.firestore();
 
-server.use(cors({
-  origin: ['https://front-p-final-chi.vercel.app','https://front-p-final-1ds7.vercel.app', 'http://localhost:3000'], // Agrega ambos orígenes si es necesario
-  credentials: true
-}));
+// Configuración detallada de CORS
+const allowedOrigins = [
+  'https://front-p-final-chi.vercel.app',
+  'https://front-p-final-1ds7.vercel.app',
+  'http://localhost:3000'
+];
 
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Permitir solicitudes sin origen (como apps móviles o curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
+};
 
+// Aplicar middleware CORS
+server.use(cors(corsOptions));
 
-server.use(bodyParser.json()); 
+// Manejar preflight requests para todas las rutas
+server.options('*', cors(corsOptions));
+
+server.use(bodyParser.json());
 
 // Configuración de winston para logs
 const logger = winston.createLogger({
@@ -47,26 +68,31 @@ const logger = winston.createLogger({
   ],
 });
 
-// Middleware de logging
+// Middleware de logging mejorado
 server.use(async (req, res, next) => {
-  console.log(`📡 [${req.method}] ${req.url} - Body:`, req.body);
+  console.log(`📡 [${req.method}] ${req.url} - Origin: ${req.headers.origin} - Body:`, req.body);
   const startTime = Date.now();
 
   res.on("finish", async () => {
     const logData = {
-      timestamp: new Date(),  // Cambié 'marcaDeTiempo' por 'timestamp'
+      timestamp: new Date(),
       method: req.method,
       url: req.url,
       status: res.statusCode,
       responseTime: Date.now() - startTime,
       ip: req.ip || req.connection.remoteAddress,
       userAgent: req.get("User-Agent"),
-      server: 1,  // Puedes dejarlo como 1 o reemplazarlo con información dinámica
+      origin: req.headers.origin,
+      server: 1,
+      corsHeaders: {
+        'access-control-allow-origin': res.getHeader('access-control-allow-origin'),
+        'access-control-allow-credentials': res.getHeader('access-control-allow-credentials')
+      }
     };
 
     if(res.statusCode >= 400) {
       logger.error(logData);
-    }else{
+    } else {
       logger.info(logData);
     }
 
@@ -79,7 +105,6 @@ server.use(async (req, res, next) => {
 
   next();
 });
- 
 
 // Rutas de la API
 server.use("/api", routes);
@@ -101,7 +126,7 @@ server.post("/login", async (req, res) => {
 
     const doc = userDoc.docs[0];
     const user = doc.data();
-    const userId = doc.id; // Obtener el ID del documento
+    const userId = doc.id;
 
     const isMatch = await bcrypt.compare(password, user.password);
 
@@ -109,7 +134,7 @@ server.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
-    // Retorna si se requiere MFA (ajusta según la lógica de tu app)
+    // Retorna si se requiere MFA
     res.json({ requiresMFA: true, userId });
 
   } catch (error) {
@@ -163,15 +188,12 @@ server.get("/getInfo", async (req, res) => {
       statusCode: 200,
       message: "Usuario encontrado exitosamente.",
       user: userData
-  }); 
-     
-
+    }); 
   } catch (error) {
     console.error("Error en getInfo:", error);
     res.status(500).json({ message: "Error interno del servidor" });
   }
 });
-
 
 // 🔑 Endpoint de servidor
 server.get("/getServer", async (req, res) => { 
@@ -182,24 +204,35 @@ server.get("/getServer", async (req, res) => {
       return res.status(404).json({ message: "No se encontraron logs" });
     }
     
-    // Convertir los documentos en un arreglo
     const logs = logCollection.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     return res.status(200).json({
       statusCode: 200,
       message: "Logs obtenidos exitosamente.",
-      logs // Enviamos los documentos en un arreglo
+      logs
     });
-     
-
   } catch (error) {
     console.error("Error en getServer:", error);
     res.status(500).json({ message: "Error interno del servidor" });
   }
 });
 
+// Middleware para manejar errores CORS explícitamente
+server.use((err, req, res, next) => {
+  if (err.message === 'Not allowed by CORS') {
+    res.status(403).json({ 
+      statusCode: 403,
+      message: 'Origen no permitido por CORS',
+      allowedOrigins: allowedOrigins,
+      yourOrigin: req.headers.origin
+    });
+  } else {
+    next(err);
+  }
+});
 
 // 🔥 Iniciar servidor
 server.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`Orígenes permitidos: ${allowedOrigins.join(', ')}`);
 });
