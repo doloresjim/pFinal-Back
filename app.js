@@ -27,7 +27,11 @@ const routes = require("./routes");
 const server = express();
 const db = admin.firestore();
 
-server.use(cors({ origin: "http://localhost:3000", credentials: true }));
+server.use(cors({
+  origin: ['http://localhost:3000', 'https://front-p-final-git-main-dolores-projects-2b79940e.vercel.app'],
+  credentials: true
+}));
+
 server.use(bodyParser.json()); 
 
 // Configuración de winston para logs
