@@ -25,35 +25,28 @@ if (!admin.apps.length) {
 const routes = require("./routes");
 const server = express();
 const db = admin.firestore();
-
-// Configuración detallada de CORS
-const allowedOrigins = [
-  'https://front-p-final-chi.vercel.app',
-  'https://front-p-final-1ds7.vercel.app',
-  'http://localhost:3000'
-];
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    // Permitir solicitudes sin origen (como apps móviles o curl)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
-};
-
-// Aplicar middleware CORS
-server.use(cors(corsOptions));
-
-// Manejar preflight requests para todas las rutas
-server.options('*', cors(corsOptions));
+ 
+// Middleware CORS manual (100% efectivo)
+server.use((req, res, next) => {
+  const allowedOrigins = [
+    'https://front-p-final-1ds7.vercel.app',
+    'https://front-p-final-chi.vercel.app',
+    'http://localhost:3000'
+  ];
+  
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 server.use(bodyParser.json());
 
