@@ -28,7 +28,7 @@ const server = express();
 const db = admin.firestore();
 
 server.use(cors({
-  origin: ['http://localhost:3000', 'https://front-p-final-git-main-dolores-projects-2b79940e.vercel.app'],
+  origin: ['https://front-p-final-git-main-dolores-projects-2b79940e.vercel.app'],
   credentials: true
 }));
 
