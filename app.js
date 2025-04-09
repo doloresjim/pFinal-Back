@@ -28,7 +28,7 @@ const server = express();
 const db = admin.firestore();
 
 server.use(cors({
-  origin: ['https://front-p-final-chi.vercel.app', 'http://localhost:3000'], // Agrega ambos orígenes si es necesario
+  origin: ['https://front-p-final-chi.vercel.app','https://front-p-final-1ds7.vercel.app', 'http://localhost:3000'], // Agrega ambos orígenes si es necesario
   credentials: true
 }));
 
