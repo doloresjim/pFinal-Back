@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const speakeasy = require("speakeasy");
 const bcrypt = require("bcryptjs");
 require("dotenv").config();
+const nodemailer = require('nodemailer');
 
 // Configuración global de orígenes permitidos
 const allowedOrigins = [
@@ -163,6 +164,117 @@ server.post("/verify-otp", async (req, res) => {
 
   } catch (error) {
     logger.error("Error en verificación OTP:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+});
+
+// Endpoint para solicitar recuperación de contraseña
+server.post("/request-password-reset", async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ message: "Email es requerido" });
+    }
+
+    const userSnapshot = await db.collection("users").where("email", "==", email).get();
+    
+    if (userSnapshot.empty) { 
+      return res.status(200).json({ 
+        message: "Si el email existe, recibirás instrucciones para restablecer tu contraseña",
+        success: false 
+      });
+    }
+
+    const userDoc = userSnapshot.docs[0];
+    const user = userDoc.data();
+    
+    // Configurar el transporte de correo
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',  
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+      }
+    });
+    
+    // Generar un enlace de recuperación con el ID del usuario
+    const resetLink = `https://front-p-final-chi.vercel.app/reset-password?userId=${userDoc.id}`;
+    
+    // Configurar el correo
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: 'Recuperación de contraseña',
+      html: `
+        <h1>Recuperación de contraseña</h1>
+        <p>Has solicitado restablecer tu contraseña.</p>
+        <p>Haz clic en el siguiente enlace para continuar:</p>
+        <a href="${resetLink}">Restablecer contraseña</a>
+        <p>Recuerda que necesitarás tu código MFA para completar el proceso.</p>
+        <p>Si no solicitaste este cambio, ignora este correo.</p>
+      `
+    };
+     
+    await transporter.sendMail(mailOptions);
+     
+    logger.info(`Correo de recuperación enviado a: ${email}`);
+    
+    res.status(200).json({ 
+      message: "Si el email existe, recibirás instrucciones para restablecer tu contraseña",
+      success: true
+    });
+
+  } catch (error) {
+    logger.error("Error en solicitud de recuperación:", error);
+    res.status(500).json({ message: "Error interno del servidor" });
+  }
+});
+
+// Endpoint para restablecer contraseña (después de verificar MFA)
+server.post("/reset-password", async (req, res) => {
+  try {
+    const { userId, token, newPassword } = req.body;
+    
+    if (!userId || !token || !newPassword) {
+      return res.status(400).json({ 
+        message: "ID de usuario, token y nueva contraseña son requeridos" 
+      });
+    } 
+    
+    const userDoc = await db.collection("users").doc(userId).get();
+    
+    if (!userDoc.exists) {
+      return res.status(404).json({ message: "Usuario no encontrado" });
+    }
+
+    const user = userDoc.data();
+     
+    const verified = speakeasy.totp.verify({
+      secret: user.mfaSecret,
+      encoding: "base32",
+      token,
+      window: 1,
+    });
+
+    if (!verified) {
+      return res.status(401).json({ message: "Código de verificación inválido" });
+    }
+ 
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    
+    // Actualizar contraseña
+    await db.collection("users").doc(userId).update({
+      password: hashedPassword
+    });
+
+    res.json({ 
+      success: true,
+      message: "Contraseña actualizada correctamente" 
+    });
+
+  } catch (error) {
+    logger.error("Error en reset-password:", error);
     res.status(500).json({ message: "Error interno del servidor" });
   }
 });
