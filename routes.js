@@ -33,11 +33,11 @@ router.post("/register", async (req, res) => {
         });
 
         // Log antes de responder
-        console.log("mfaSecret del usuario:", secret.base32);
+        console.log("mfaSecret del us:", secret.base32);
 
         // Respuesta correcta
         return res.status(201).json({ 
-            message: "User registered",
+            message: "Usuario registrado",
             mfaSecret: secret.base32
         });
 
