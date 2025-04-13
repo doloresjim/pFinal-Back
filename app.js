@@ -72,7 +72,7 @@ server.use(async (req, res, next) => {
   const logData = {
     ip: req.ip || req.connection.remoteAddress,
     method: req.method,
-    responseTime: endTime - startTime,
+    responseTime: Date.now() - startTime,
     server: 1,
     status: res.statusCode,
     timestamp: new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
