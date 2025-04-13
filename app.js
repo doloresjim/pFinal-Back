@@ -7,9 +7,7 @@ const jwt = require("jsonwebtoken");
 const speakeasy = require("speakeasy");
 const bcrypt = require("bcryptjs");
 require("dotenv").config();
-const nodemailer = require('nodemailer');
 
-// Configuración global de orígenes permitidos
 const allowedOrigins = [
   'https://front-p-final-1ds7.vercel.app',
   'https://front-p-final-chi.vercel.app',
@@ -30,32 +28,30 @@ if (!admin.apps.length) {
   admin.app();
 }
 
-const routes = require("./routes");
 const server = express();
 const db = admin.firestore();
 
-// Middleware CORS manual mejorado
-server.use((req, res, next) => {
-  const origin = req.headers.origin;
-  
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Vary', 'Origin');
-  }
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  
-  next();
-});
-
 server.use(bodyParser.json());
+server.use(bodyParser.urlencoded({ extended: true }));
 
-// Configuración de logs con Winston
+const corsOptions = {
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`Intento de acceso desde origen no permitido: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+server.use(cors(corsOptions));
+server.options('*', cors(corsOptions));
+
 const logger = winston.createLogger({
   level: "info",
   format: winston.format.combine(
@@ -68,7 +64,6 @@ const logger = winston.createLogger({
   ],
 });
 
-// Middleware de logging mejorado
 server.use(async (req, res, next) => {
   const startTime = Date.now();
 
@@ -104,20 +99,16 @@ server.use(async (req, res, next) => {
   next();
 });
 
-// Rutas principales
-server.use("/api", routes);
-
-// Endpoint de login
+// LOGIN
 server.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-    
+
     if (!email || !password) {
       return res.status(400).json({ message: "Email y contraseña son requeridos" });
     }
 
     const userSnapshot = await db.collection("users").where("email", "==", email).get();
-    
     if (userSnapshot.empty) {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
@@ -130,10 +121,7 @@ server.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
-    res.json({ 
-      requiresMFA: true, 
-      userId: userDoc.id 
-    });
+    res.json({ requiresMFA: true, userId: userDoc.id });
 
   } catch (error) {
     logger.error("Error en login:", error);
@@ -141,13 +129,12 @@ server.post("/login", async (req, res) => {
   }
 });
 
-// Endpoint de verificación OTP
+// OTP VERIFICATION
 server.post("/verify-otp", async (req, res) => {
   try {
     const { email, token } = req.body;
-    
+
     const userSnapshot = await db.collection("users").where("email", "==", email).get();
-    
     if (userSnapshot.empty) {
       return res.status(404).json({ message: "Usuario no encontrado" });
     }
@@ -168,117 +155,74 @@ server.post("/verify-otp", async (req, res) => {
   }
 });
 
-// Endpoint para solicitar recuperación de contraseña
+// NUEVA RECUPERACIÓN SIN CORREO
 server.post("/request-password-reset", async (req, res) => {
   try {
-    console.log("Solicitud recibida:", req.body); // Log de la solicitud entrante
-    
     const { email } = req.body;
-    
-    // Validación mejorada
+
     if (!email) {
-      console.log("Email no proporcionado");
       return res.status(400).json({ message: "Email es requerido" });
     }
 
-    console.log("Buscando usuario con email:", email);
     const userSnapshot = await db.collection("users").where("email", "==", email).get();
-    
     if (userSnapshot.empty) {
-      console.log("No se encontró usuario con email:", email);
       return res.status(200).json({ 
-        message: "Si el email existe, recibirás instrucciones para restablecer tu contraseña",
+        message: "Si el email existe, podrás usar el código para restablecer tu contraseña",
         success: false 
       });
     }
 
-    console.log("Usuario encontrado, preparando email...");
     const userDoc = userSnapshot.docs[0];
-    const resetLink = `https://front-p-final-chi.vercel.app/reset-password?userId=${userDoc.id}`;
-    
-    console.log("Configurando transporte de email...");
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD
-      }
-    });
+    const user = userDoc.data();
 
-    console.log("Preparando opciones de email...");
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: 'Recuperación de contraseña',
-      html: `...` // tu plantilla de email
-    };
-     
-    console.log("Intentando enviar email...");
-    await transporter.sendMail(mailOptions);
-    console.log("Email enviado exitosamente");
-    
+    const resetToken = jwt.sign({ userId: userDoc.id }, SECRET_KEY, { expiresIn: '15m' });
+
     res.status(200).json({ 
-      message: "Si el email existe, recibirás instrucciones para restablecer tu contraseña",
+      message: "Usa el código del autenticador para continuar.",
+      resetToken,
+      mfaSecret: user.mfaSecret,
       success: true
     });
 
   } catch (error) {
-    console.error("Error completo:", {
-      message: error.message,
-      stack: error.stack,
-      timestamp: new Date().toISOString()
-    });
-    
-    // Respuesta más informativa
-    res.status(500).json({ 
-      message: "Error en el servidor",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-      code: error.code
-    });
+    console.error("Error en request-password-reset:", error);
+    res.status(500).json({ message: "Error en el servidor" });
   }
 });
 
-// Endpoint para restablecer contraseña (después de verificar MFA)
+// RESTABLECER CONTRASEÑA
 server.post("/reset-password", async (req, res) => {
   try {
-    const { userId, token, newPassword } = req.body;
-    
-    if (!userId || !token || !newPassword) {
-      return res.status(400).json({ 
-        message: "ID de usuario, token y nueva contraseña son requeridos" 
-      });
-    } 
-    
-    const userDoc = await db.collection("users").doc(userId).get();
-    
+    const { resetToken, mfaCode, newPassword } = req.body;
+
+    if (!resetToken || !mfaCode || !newPassword) {
+      return res.status(400).json({ message: "Todos los campos son requeridos" });
+    }
+
+    const decoded = jwt.verify(resetToken, SECRET_KEY);
+    const userDoc = await db.collection("users").doc(decoded.userId).get();
+
     if (!userDoc.exists) {
       return res.status(404).json({ message: "Usuario no encontrado" });
     }
 
     const user = userDoc.data();
-     
+
     const verified = speakeasy.totp.verify({
       secret: user.mfaSecret,
       encoding: "base32",
-      token,
-      window: 1,
+      token: mfaCode,
+      window: 1
     });
 
     if (!verified) {
-      return res.status(401).json({ message: "Código de verificación inválido" });
+      return res.status(401).json({ message: "Código MFA inválido" });
     }
- 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    
-    // Actualizar contraseña
-    await db.collection("users").doc(userId).update({
-      password: hashedPassword
-    });
 
-    res.json({ 
-      success: true,
-      message: "Contraseña actualizada correctamente" 
-    });
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await db.collection("users").doc(decoded.userId).update({ password: hashedPassword });
+
+    res.json({ message: "Contraseña actualizada correctamente" });
 
   } catch (error) {
     logger.error("Error en reset-password:", error);
@@ -286,17 +230,17 @@ server.post("/reset-password", async (req, res) => {
   }
 });
 
-// Endpoint para obtener información de usuario
+// INFO DE USUARIO
 server.get("/getInfo", async (req, res) => {
   try {
     const { idUs } = req.query;
-    
+
     if (!idUs) {
       return res.status(400).json({ message: "ID de usuario es requerido" });
     }
 
     const userDoc = await db.collection("users").doc(idUs).get();
-    
+
     if (!userDoc.exists) {
       return res.status(404).json({ message: "Usuario no encontrado" });
     }
@@ -313,12 +257,12 @@ server.get("/getInfo", async (req, res) => {
   }
 });
 
-// Endpoint para obtener logs del servidor
+// LOGS DEL SERVIDOR
 server.get("/getServer", async (req, res) => {
   try {
     const logsSnapshot = await db.collection("logs").get();
     const logs = logsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    
+
     res.json({
       statusCode: 200,
       message: "Logs obtenidos",
@@ -331,7 +275,7 @@ server.get("/getServer", async (req, res) => {
   }
 });
 
-// Middleware para manejar errores CORS explícitamente
+// ERROR CORS
 server.use((err, req, res, next) => {
   if (err.message === 'Not allowed by CORS') {
     res.status(403).json({ 
@@ -345,11 +289,10 @@ server.use((err, req, res, next) => {
   }
 });
 
-// Iniciar servidor
+// INICIAR SERVIDOR
 server.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
   console.log('Orígenes permitidos:', allowedOrigins);
 });
 
-// Exportar para testing
 module.exports = server;
