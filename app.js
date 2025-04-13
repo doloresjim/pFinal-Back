@@ -171,62 +171,51 @@ server.post("/verify-otp", async (req, res) => {
 // Endpoint para solicitar recuperación de contraseña
 server.post("/request-password-reset", async (req, res) => {
   try {
+    console.log("Solicitud recibida:", req.body); // Log de la solicitud entrante
+    
     const { email } = req.body;
     
+    // Validación mejorada
     if (!email) {
+      console.log("Email no proporcionado");
       return res.status(400).json({ message: "Email es requerido" });
     }
 
+    console.log("Buscando usuario con email:", email);
     const userSnapshot = await db.collection("users").where("email", "==", email).get();
     
-    if (userSnapshot.empty) { 
+    if (userSnapshot.empty) {
+      console.log("No se encontró usuario con email:", email);
       return res.status(200).json({ 
         message: "Si el email existe, recibirás instrucciones para restablecer tu contraseña",
         success: false 
       });
     }
 
+    console.log("Usuario encontrado, preparando email...");
     const userDoc = userSnapshot.docs[0];
-    const user = userDoc.data();
+    const resetLink = `https://front-p-final-chi.vercel.app/reset-password?userId=${userDoc.id}`;
     
-    // Configurar el transporte de correo
+    console.log("Configurando transporte de email...");
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD
-      },
-      tls: {
-        rejectUnauthorized: false // Solo para desarrollo, quitar en producción
       }
     });
 
-    console.log("Configurando transporte con:", {
-      user: process.env.EMAIL_USER ? "Existe" : "Falta EMAIL_USER",
-      pass: process.env.EMAIL_PASSWORD ? "Existe" : "Falta EMAIL_PASSWORD"
-    });
-    
-    // Generar un enlace de recuperación con el ID del usuario
-    const resetLink = `https://front-p-final-chi.vercel.app/reset-password?userId=${userDoc.id}`;
-    
-    // Configurar el correo
+    console.log("Preparando opciones de email...");
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
       subject: 'Recuperación de contraseña',
-      html: `
-        <h1>Recuperación de contraseña</h1>
-        <p>Has solicitado restablecer tu contraseña.</p>
-        <p>Haz clic en el siguiente enlace para continuar:</p>
-        <a href="${resetLink}">Restablecer contraseña</a>
-        <p>Recuerda que necesitarás tu código MFA para completar el proceso.</p>
-        <p>Si no solicitaste este cambio, ignora este correo.</p>
-      `
+      html: `...` // tu plantilla de email
     };
      
+    console.log("Intentando enviar email...");
     await transporter.sendMail(mailOptions);
-     
-    logger.info(`Correo de recuperación enviado a: ${email}`);
+    console.log("Email enviado exitosamente");
     
     res.status(200).json({ 
       message: "Si el email existe, recibirás instrucciones para restablecer tu contraseña",
@@ -234,20 +223,15 @@ server.post("/request-password-reset", async (req, res) => {
     });
 
   } catch (error) {
-    logger.error("Error detallado en solicitud de recuperación:", {
+    console.error("ERROR EN request-password-reset:", {
       message: error.message,
       stack: error.stack,
-      emailAttempted: email
+      timestamp: new Date().toISOString()
     });
     
-    // En desarrollo, envía detalles del error
-    const errorMessage = process.env.NODE_ENV === 'development' 
-      ? `Error: ${error.message}`
-      : "Error interno del servidor";
-      
     res.status(500).json({ 
-      message: errorMessage,
-      success: false
+      message: "Error interno del servidor",
+      error: process.env.NODE_ENV === 'development' ? error.message : null
     });
   }
 });
