@@ -1,5 +1,4 @@
-const express = require("express");
-const admin = require("firebase-admin");
+const express = require("express"); 
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const winston = require("winston");
@@ -8,6 +7,7 @@ const speakeasy = require("speakeasy");
 const bcrypt = require("bcryptjs");
 require("dotenv").config();
 const routes = require("./routes");
+const admin = require("firebase-admin");
 
 const allowedOrigins = [
   'https://front-p-final-1ds7.vercel.app',
@@ -22,13 +22,14 @@ const PORT = process.env.PORT || 5001;
 // Configuración de Firebase
 const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
 
+// Verifica si no ha sido inicializada antes (evita error en hot reload)
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+    credential: admin.credential.cert(require("./serviceAccountKey.json")), // ← tu archivo con credenciales
   });
-} else {
-  admin.app();
 }
+
+module.exports = admin;
 
 const server = express();
 const db = admin.firestore(); 
