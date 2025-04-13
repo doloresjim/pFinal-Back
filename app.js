@@ -55,11 +55,13 @@ server.options('*', cors(corsOptions));
 
 const logger = winston.createLogger({
   level: "info",
-  format: winston.format.json(),
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
   transports: [
     new winston.transports.File({ filename: "logs/error.log", level: "error" }),
-    new winston.transports.File({ filename: "logs/all.log", level: "info" }),
-    new winston.transports.File({ filename: "logs/combined.log" }),
+    new winston.transports.File({ filename: "logs/combined.log" })
   ],
 });
 
@@ -73,19 +75,14 @@ server.use((req, res, next) => {
 
   const logResponse = async (body, methodUsed) => {
     const logData = {
-      ip: req.ip || req.connection.remoteAddress,
+      timestamp: new Date(),  // Cambié 'marcaDeTiempo' por 'timestamp'
       method: req.method,
-      responseTime: Date.now() - startTime,
-      server: 1,
-      status: res.statusCode,
-      timestamp: new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
       url: req.url,
+      status: res.statusCode,
+      responseTime: Date.now() - startTime,
+      ip: req.ip || req.connection.remoteAddress,
       userAgent: req.get("User-Agent"),
-      responseBody: body,
-      corsHeaders: {
-        'access-control-allow-origin': res.getHeader('access-control-allow-origin'),
-        'access-control-allow-credentials': res.getHeader('access-control-allow-credentials')
-      }
+      server: 1,
     };
 
     try {
