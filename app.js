@@ -29,6 +29,7 @@ if (!admin.apps.length) {
   admin.app();
 }
 
+const routes = require("./routes");
 const server = express();
 const db = admin.firestore();
 
