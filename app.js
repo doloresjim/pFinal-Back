@@ -70,12 +70,14 @@ const logger = winston.createLogger({
 server.use(async (req, res, next) => {
   const startTime = Date.now();
   const logData = {
-    timestamp: new Date(),
-    method: req.method,
-    url: req.url,
     ip: req.ip || req.connection.remoteAddress,
-    userAgent: req.get("User-Agent"),
-    origin: req.headers.origin
+    method: req.method,
+    responseTime: endTime - startTime,
+    server: 1,
+    status: res.statusCode,
+    timestamp: new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
+    url: req.url,
+    userAgent: req.get("User-Agent")
   };
 
   // Guardamos una copia de la función original de res.json
