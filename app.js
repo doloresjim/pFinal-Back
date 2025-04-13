@@ -51,10 +51,8 @@ const corsOptions = {
 };
 
 server.use(cors(corsOptions));
-server.options('*', cors(corsOptions)); 
+server.options('*', cors(corsOptions));
 
-// Middleware
-// Configuración de winston para logs
 const logger = winston.createLogger({
   level: "info",
   format: winston.format.json(),
@@ -65,35 +63,50 @@ const logger = winston.createLogger({
   ],
 });
 
-// Middleware de logging
-server.use(async (req, res, next) => {
-  console.log(`📡 [${req.method}] ${req.url} - Body:`, req.body);
+// Middleware
+server.use((req, res, next) => {
   const startTime = Date.now();
+  const shouldLog = req.method === "GET" || req.method === "POST";
 
-  res.on("finish", async () => {
+  const originalJson = res.json.bind(res);
+  const originalSend = res.send.bind(res);
+
+  const logResponse = async (body, methodUsed) => {
     const logData = {
-      timestamp: new Date(),   
-      method: req.method,
-      url: req.url,
-      status: res.statusCode,
-      responseTime: Date.now() - startTime,
       ip: req.ip || req.connection.remoteAddress,
+      method: req.method,
+      responseTime: Date.now() - startTime,
+      server: 1,
+      status: res.statusCode,
+      timestamp: new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
+      url: req.url,
       userAgent: req.get("User-Agent"),
-      server: 1,  
+      responseBody: body,
+      corsHeaders: {
+        'access-control-allow-origin': res.getHeader('access-control-allow-origin'),
+        'access-control-allow-credentials': res.getHeader('access-control-allow-credentials')
+      }
     };
 
-    if(res.statusCode >= 400) {
-      logger.error(logData);
-    }else{
-      logger.info(logData);
+    try {
+      if (shouldLog) {
+        await db.collection("logs").add(logData);
+
+        if (res.statusCode >= 400) {
+          logger.error(logData);
+        } else {
+          logger.info(logData);
+        }
+      }
+    } catch (error) {
+      console.error("Error al guardar logs:", error);
     }
 
-    try {
-      await db.collection("logs").add(logData);
-    } catch (error) {
-      logger.error("Error al guardar log en Firebase: ", error);
-    }
-  });
+    return methodUsed(body);
+  };
+
+  res.json = (body) => logResponse(body, originalJson);
+  res.send = (body) => logResponse(body, originalSend);
 
   next();
 });
