@@ -40,7 +40,7 @@ server.use((req, res, next) => {
   
   if (allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('Vary', 'Origin');
@@ -223,15 +223,17 @@ server.post("/request-password-reset", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("ERROR EN request-password-reset:", {
+    console.error("Error completo:", {
       message: error.message,
       stack: error.stack,
       timestamp: new Date().toISOString()
     });
     
+    // Respuesta más informativa
     res.status(500).json({ 
-      message: "Error interno del servidor",
-      error: process.env.NODE_ENV === 'development' ? error.message : null
+      message: "Error en el servidor",
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      code: error.code
     });
   }
 });
