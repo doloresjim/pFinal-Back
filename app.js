@@ -191,11 +191,19 @@ server.post("/request-password-reset", async (req, res) => {
     
     // Configurar el transporte de correo
     const transporter = nodemailer.createTransport({
-      service: 'gmail',  
+      service: 'gmail',
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD
+      },
+      tls: {
+        rejectUnauthorized: false // Solo para desarrollo, quitar en producción
       }
+    });
+
+    console.log("Configurando transporte con:", {
+      user: process.env.EMAIL_USER ? "Existe" : "Falta EMAIL_USER",
+      pass: process.env.EMAIL_PASSWORD ? "Existe" : "Falta EMAIL_PASSWORD"
     });
     
     // Generar un enlace de recuperación con el ID del usuario
@@ -226,8 +234,21 @@ server.post("/request-password-reset", async (req, res) => {
     });
 
   } catch (error) {
-    logger.error("Error en solicitud de recuperación:", error);
-    res.status(500).json({ message: "Error interno del servidor" });
+    logger.error("Error detallado en solicitud de recuperación:", {
+      message: error.message,
+      stack: error.stack,
+      emailAttempted: email
+    });
+    
+    // En desarrollo, envía detalles del error
+    const errorMessage = process.env.NODE_ENV === 'development' 
+      ? `Error: ${error.message}`
+      : "Error interno del servidor";
+      
+    res.status(500).json({ 
+      message: errorMessage,
+      success: false
+    });
   }
 });
 
