@@ -25,7 +25,7 @@ const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
 // Verifica si no ha sido inicializada antes (evita error en hot reload)
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(require("./serviceAccountKey.json")), // ← tu archivo con credenciales
+    credential: admin.credential.cert(serviceAccount),
   });
 }
 
