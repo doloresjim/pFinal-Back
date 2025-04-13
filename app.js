@@ -64,35 +64,43 @@ const logger = winston.createLogger({
   ],
 });
 
+// Middleware mejorado para logs
 server.use(async (req, res, next) => {
   const startTime = Date.now();
+  const serverInstance = 1; // Identificador del servidor (1 para este servidor)
 
   res.on("finish", async () => {
-    const logData = {
-      timestamp: new Date(),
-      method: req.method,
-      url: req.url,
-      status: res.statusCode,
-      responseTime: Date.now() - startTime,
-      ip: req.ip || req.connection.remoteAddress,
-      userAgent: req.get("User-Agent"),
-      origin: req.headers.origin,
-      corsHeaders: {
-        'access-control-allow-origin': res.getHeader('access-control-allow-origin'),
-        'access-control-allow-credentials': res.getHeader('access-control-allow-credentials')
-      }
-    };
-
-    if (res.statusCode >= 400) {
-      logger.error(logData);
-    } else {
-      logger.info(logData);
-    }
-
     try {
+      const logData = {
+        timestamp: admin.firestore.FieldValue.serverTimestamp(), // Usa timestamp de Firestore
+        method: req.method,
+        url: req.url,
+        status: res.statusCode,
+        responseTime: Date.now() - startTime,
+        ip: req.ip || req.connection.remoteAddress,
+        userAgent: req.get("User-Agent"),
+        origin: req.headers.origin,
+        server: serverInstance, // Añadido campo server
+        corsHeaders: {
+          'access-control-allow-origin': res.getHeader('access-control-allow-origin'),
+          'access-control-allow-credentials': res.getHeader('access-control-allow-credentials')
+        }
+      };
+
+      // Log a archivos locales
+      if (res.statusCode >= 400) {
+        logger.error(logData);
+      } else {
+        logger.info(logData);
+      }
+
+      // Log a Firestore
       await db.collection("logs").add(logData);
+      console.log("Log registrado en Firestore:", logData); // Log de depuración
+
     } catch (error) {
-      logger.error("Error al guardar log en Firebase:", error);
+      console.error("Error al guardar log:", error);
+      logger.error("Error al guardar log:", error);
     }
   });
 
@@ -260,20 +268,61 @@ server.get("/getInfo", async (req, res) => {
 // LOGS DEL SERVIDOR
 server.get("/getServer", async (req, res) => {
   try {
-    const logsSnapshot = await db.collection("logs").get();
-    const logs = logsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const logsSnapshot = await db.collection("logs")
+      .orderBy("timestamp", "desc") // Ordenar por timestamp descendente
+      .limit(1000) // Límite para no sobrecargar
+      .get();
+
+    const logs = logsSnapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        // Asegurar que el timestamp sea accesible
+        timestamp: data.timestamp ? data.timestamp.toDate() : new Date()
+      };
+    });
 
     res.json({
       statusCode: 200,
       message: "Logs obtenidos",
-      logs
+      logs,
+      count: logs.length
     });
 
   } catch (error) {
-    logger.error("Error en getServer:", error);
-    res.status(500).json({ message: "Error interno del servidor" });
+    console.error("Error en getServer:", error);
+    res.status(500).json({ 
+      message: "Error interno del servidor",
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
+
+
+// Endpoint de prueba para Firestore
+server.get("/test-firebase", async (req, res) => {
+  try {
+    const testDoc = await db.collection("test").add({
+      message: "Test connection",
+      timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      server: 1
+    });
+    res.json({ 
+      success: true, 
+      id: testDoc.id,
+      message: "Conexión a Firestore verificada correctamente"
+    });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false,
+      error: error.message,
+      details: "Verifica las credenciales de Firebase y los permisos de Firestore"
+    });
+  }
+});
+
 
 // ERROR CORS
 server.use((err, req, res, next) => {
