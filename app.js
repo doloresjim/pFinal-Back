@@ -65,22 +65,20 @@ const logger = winston.createLogger({
   ],
 });
 
-// Modifica el middleware de logging de la siguiente manera:
-
+// Middleware
 server.use(async (req, res, next) => {
   const startTime = Date.now();
   const logData = {
     ip: req.ip || req.connection.remoteAddress,
     method: req.method,
     responseTime: Date.now() - startTime,
-    server: 1,
+    server: 2,
     status: res.statusCode,
     timestamp: new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
     url: req.url,
     userAgent: req.get("User-Agent")
   };
-
-  // Guardamos una copia de la función original de res.json
+ 
   const originalJson = res.json.bind(res);
 
   // Sobrescribimos res.json para interceptar la respuesta
@@ -105,11 +103,9 @@ server.use(async (req, res, next) => {
       // Guardamos en Firebase
       await db.collection("logs").add(logData);
     } catch (error) {
-      console.error("Error al guardar logs:", error);
-      // No detenemos el flujo por un error en el logging
+      console.error("Error al guardar logs:", error); 
     }
-
-    // Llamamos a la función original
+ 
     return originalJson(body);
   };
 
