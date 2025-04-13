@@ -108,6 +108,8 @@ server.use((req, res, next) => {
   next();
 });
 
+// Rutas de la API
+server.use("/api", routes);
 
 // LOGIN
 server.post("/login", async (req, res) => {
