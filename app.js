@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 const speakeasy = require("speakeasy");
 const bcrypt = require("bcryptjs");
 require("dotenv").config();
+const routes = require("./routes");
 
 const allowedOrigins = [
   'https://front-p-final-1ds7.vercel.app',
@@ -29,9 +30,8 @@ if (!admin.apps.length) {
   admin.app();
 }
 
-const routes = require("./routes");
 const server = express();
-const db = admin.firestore();
+const db = admin.firestore(); 
 
 server.use(bodyParser.json());
 server.use(bodyParser.urlencoded({ extended: true }));
@@ -110,7 +110,7 @@ server.use((req, res, next) => {
 });
 
 // Rutas de la API
-server.use("/api", routes);
+server.use(routes);
 
 // LOGIN
 server.post("/login", async (req, res) => {
@@ -168,7 +168,7 @@ server.post("/verify-otp", async (req, res) => {
   }
 });
 
-// NUEVA RECUPERACIÓN SIN CORREO
+// NUEVA RECUPERACIÓN CON CODIGO
 server.post("/request-password-reset", async (req, res) => {
   try {
     const { email } = req.body;
