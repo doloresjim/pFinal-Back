@@ -51,64 +51,49 @@ const corsOptions = {
 };
 
 server.use(cors(corsOptions));
-server.options('*', cors(corsOptions));
+server.options('*', cors(corsOptions)); 
 
+// Middleware
+// Configuración de winston para logs
 const logger = winston.createLogger({
   level: "info",
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
+  format: winston.format.json(),
   transports: [
     new winston.transports.File({ filename: "logs/error.log", level: "error" }),
-    new winston.transports.File({ filename: "logs/combined.log" })
+    new winston.transports.File({ filename: "logs/all.log", level: "info" }),
+    new winston.transports.File({ filename: "logs/combined.log" }),
   ],
 });
 
-// Middleware
-server.use((req, res, next) => {
+// Middleware de logging
+server.use(async (req, res, next) => {
+  console.log(`📡 [${req.method}] ${req.url} - Body:`, req.body);
   const startTime = Date.now();
-  const shouldLog = req.method === "GET" || req.method === "POST";
 
-  const originalJson = res.json.bind(res);
-  const originalSend = res.send.bind(res);
-
-  const logResponse = async (body, methodUsed) => {
+  res.on("finish", async () => {
     const logData = {
-      ip: req.ip || req.connection.remoteAddress,
+      timestamp: new Date(),   
       method: req.method,
-      responseTime: Date.now() - startTime,
-      server: 1,
-      status: res.statusCode,
-      timestamp: new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
       url: req.url,
+      status: res.statusCode,
+      responseTime: Date.now() - startTime,
+      ip: req.ip || req.connection.remoteAddress,
       userAgent: req.get("User-Agent"),
-      responseBody: body,
-      corsHeaders: {
-        'access-control-allow-origin': res.getHeader('access-control-allow-origin'),
-        'access-control-allow-credentials': res.getHeader('access-control-allow-credentials')
-      }
+      server: 1,  
     };
 
-    try {
-      if (shouldLog) {
-        await db.collection("logs").add(logData);
-
-        if (res.statusCode >= 400) {
-          logger.error(logData);
-        } else {
-          logger.info(logData);
-        }
-      }
-    } catch (error) {
-      console.error("Error al guardar logs:", error);
+    if(res.statusCode >= 400) {
+      logger.error(logData);
+    }else{
+      logger.info(logData);
     }
 
-    return methodUsed(body);
-  };
-
-  res.json = (body) => logResponse(body, originalJson);
-  res.send = (body) => logResponse(body, originalSend);
+    try {
+      await db.collection("logs").add(logData);
+    } catch (error) {
+      logger.error("Error al guardar log en Firebase: ", error);
+    }
+  });
 
   next();
 });
