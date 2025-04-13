@@ -72,7 +72,7 @@ server.use(async (req, res, next) => {
     ip: req.ip || req.connection.remoteAddress,
     method: req.method,
     responseTime: Date.now() - startTime,
-    server: 2,
+    server: 1,
     status: res.statusCode,
     timestamp: new Date().toLocaleString('es-MX', { timeZone: 'America/Mexico_City' }),
     url: req.url,
