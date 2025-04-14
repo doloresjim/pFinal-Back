@@ -8,8 +8,7 @@ const speakeasy = require("speakeasy");
 const bcrypt = require("bcryptjs");
 require("dotenv").config();
 
-// Configuración de orígenes permitidos
-const allowedOrigins = [
+const allowedOrigins = [ 
   'https://front-p-final-iand.vercel.app',
   'https://front-p-final-chi.vercel.app',
   'https://front-p-final-l0liz.vercel.app',
@@ -25,10 +24,10 @@ try {
   serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
 } catch (error) {
   console.error('Error parsing FIREBASE_CREDENTIALS:', error);
-  process.exit(1);
+  process.exit(1); // Salir si las credenciales son inválidas
 }
 
-// Inicialización de Firebase
+// Configuración de Firebase con verificación
 if (!admin.apps.length) {
   try {
     admin.initializeApp({
@@ -43,49 +42,43 @@ if (!admin.apps.length) {
 
 const server = express();
 const db = admin.firestore();
+const routes = require("./routes");
 
-// Configuración de middlewares
 server.use(bodyParser.json());
 server.use(bodyParser.urlencoded({ extended: true }));
 
-// Configuración CORS mejorada
-const corsOptionsDelegate = (req, callback) => {
-  const origin = req.header('Origin');
-  const corsOptions = {
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-action-type'],
-    exposedHeaders: ['Content-Length', 'X-Kuma-Revision'],
-    maxAge: 86400
-  };
-
-  // Permitir solicitudes sin origen (como apps móviles o Postman)
-  if (!origin) {
-    corsOptions.origin = false;
-    return callback(null, corsOptions);
-  }
-
-  // Verificar si el origen está permitido
-  if (allowedOrigins.includes(origin)) {
-    corsOptions.origin = origin;
-    return callback(null, corsOptions);
-  }
-
-  // Origen no permitido
-  console.warn(`Intento de acceso desde origen no permitido: ${origin}`);
-  return callback(new Error('Not allowed by CORS'), corsOptions);
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Permite solicitudes sin origen (como apps móviles o Postman)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`Intento de acceso desde origen no permitido: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-action-type'],
+  exposedHeaders: ['Content-Length', 'X-Kuma-Revision'],
+  credentials: true,
+  maxAge: 86400, // Cache preflight por 24 horas
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
-// Aplicar CORS con la configuración personalizada
-server.use(cors(corsOptionsDelegate));
+// Aplicar CORS a todas las rutas
+server.use(cors(corsOptions));
 
 // Manejar explícitamente las peticiones OPTIONS
-server.options('*', cors(corsOptionsDelegate));
+server.options('*', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || allowedOrigins[0]);
+  res.setHeader('Access-Control-Allow-Methods', corsOptions.methods.join(','));
+  res.setHeader('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(','));
+  res.status(corsOptions.optionsSuccessStatus).end();
+});
 
-// CAMBIAR ESTA LÍNEA - Configurar correctamente las rutas
-server.use("/api", routes);  // Esto montará todas las rutas de routes.js bajo /api
-
-// Configuración de logging
 const logger = winston.createLogger({
   level: "info",
   format: winston.format.combine(
@@ -98,13 +91,15 @@ const logger = winston.createLogger({
   ],
 });
 
-// Middleware de logging mejorado
+// Middleware
 server.use((req, res, next) => {
+  // Saltar el logging para peticiones OPTIONS
   if (req.method === 'OPTIONS') return next();
 
   const startTime = Date.now();
   const shouldLog = ['GET', 'POST', 'PUT', 'DELETE'].includes(req.method);
 
+  // Funciones originales
   const originalJson = res.json.bind(res);
   const originalSend = res.send.bind(res);
 
@@ -139,20 +134,19 @@ server.use((req, res, next) => {
   next();
 });
 
-// Endpoint de prueba CORS
 server.get('/api/cors-test', (req, res) => {
   res.json({
     message: 'CORS test successful',
     origin: req.get('Origin'),
-    allowedOrigins: allowedOrigins,
-    headers: req.headers
+    allowedOrigins: allowedOrigins
   });
 });
 
-// Rutas de autenticación
-server.post("/api/", routes);
+// Rutas de la API
+server.use("/api", routes);
 
-server.post("/api/login", async (req, res) => {
+// LOGIN
+server.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -173,18 +167,13 @@ server.post("/api/login", async (req, res) => {
       return res.status(401).json({ message: "Credenciales inválidas" });
     }
 
-    res.json({ 
-      requiresMFA: true, 
-      userId: userDoc.id,
-      mfaSecret: user.mfaSecret
-    });
+    res.json({ requiresMFA: true, userId: userDoc.id });
 
   } catch (error) {
     logger.error("Error en login:", error);
     res.status(500).json({ message: "Error interno del servidor" });
   }
 });
-
 
 // OTP VERIFICATION
 server.post("/verify-otp", async (req, res) => {
@@ -332,6 +321,7 @@ server.get("/getServer", async (req, res) => {
   }
 });
 
+// ERROR CORS
 server.use((err, req, res, next) => {
   if (err.message === 'Not allowed by CORS') {
     res.status(403).json({ 
@@ -345,17 +335,10 @@ server.use((err, req, res, next) => {
   }
 });
 
-// Manejador de errores general
-server.use((err, req, res, next) => {
-  logger.error("Error no manejado:", err);
-  res.status(500).json({ message: "Error interno del servidor" });
-});
-
-// Iniciar servidor
+// INICIAR SERVIDOR
 server.listen(PORT, () => {
   console.log(`Servidor corriendo en http://localhost:${PORT}`);
   console.log('Orígenes permitidos:', allowedOrigins);
 });
 
 module.exports = server;
-
