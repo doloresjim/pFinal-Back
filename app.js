@@ -11,6 +11,7 @@ require("dotenv").config();
 const allowedOrigins = [ 
   'https://front-p-final-iand.vercel.app',
   'https://front-p-final-chi.vercel.app',
+  'https://front-p-final-lms5.vercel.app',
   'https://front-p-final-l0liz.vercel.app',
   'http://localhost:3000'
 ];
