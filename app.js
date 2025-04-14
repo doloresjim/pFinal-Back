@@ -82,6 +82,9 @@ server.use(cors(corsOptionsDelegate));
 // Manejar explícitamente las peticiones OPTIONS
 server.options('*', cors(corsOptionsDelegate));
 
+// CAMBIAR ESTA LÍNEA - Configurar correctamente las rutas
+server.use("/api", routes);  // Esto montará todas las rutas de routes.js bajo /api
+
 // Configuración de logging
 const logger = winston.createLogger({
   level: "info",
@@ -147,48 +150,7 @@ server.get('/api/cors-test', (req, res) => {
 });
 
 // Rutas de autenticación
-server.post("/api/register", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email y contraseña son requeridos" });
-    }
-
-    // Verificar si el usuario ya existe
-    const userSnapshot = await db.collection("users").where("email", "==", email).get();
-    if (!userSnapshot.empty) {
-      return res.status(400).json({ message: "El email ya está registrado" });
-    }
-
-    // Hash de la contraseña
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    // Generar secreto MFA
-    const mfaSecret = speakeasy.generateSecret({ length: 20 }).base32;
-
-    // Crear nuevo usuario
-    const newUser = {
-      email,
-      password: hashedPassword,
-      mfaSecret,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    };
-
-    const userRef = await db.collection("users").add(newUser);
-
-    res.status(201).json({ 
-      message: "Usuario registrado exitosamente",
-      userId: userRef.id,
-      requiresMFA: true
-    });
-
-  } catch (error) {
-    logger.error("Error en registro:", error);
-    res.status(500).json({ message: "Error interno del servidor" });
-  }
-});
+server.post("/api/", routes);
 
 server.post("/api/login", async (req, res) => {
   try {
