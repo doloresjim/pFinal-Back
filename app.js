@@ -19,14 +19,25 @@ const { SECRET_KEY } = process.env;
 const PORT = process.env.PORT || 5001;
 
 // Configuración de Firebase
-const serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+let serviceAccount;
+try {
+  serviceAccount = JSON.parse(process.env.FIREBASE_CREDENTIALS);
+} catch (error) {
+  console.error('Error parsing FIREBASE_CREDENTIALS:', error);
+  process.exit(1); // Salir si las credenciales son inválidas
+}
 
+// Configuración de Firebase con verificación
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-  });
-} else {
-  admin.app();
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
+    console.log('Firebase Admin inicializado correctamente');
+  } catch (firebaseError) {
+    console.error('Error inicializando Firebase Admin:', firebaseError);
+    process.exit(1);
+  }
 }
 
 const server = express();
@@ -38,7 +49,10 @@ server.use(bodyParser.urlencoded({ extended: true }));
 
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
+    // Permite solicitudes sin origen (como apps móviles o Postman)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       console.warn(`Intento de acceso desde origen no permitido: ${origin}`);
@@ -47,12 +61,23 @@ const corsOptions = {
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-action-type'],
+  exposedHeaders: ['Content-Length', 'X-Kuma-Revision'],
   credentials: true,
-  optionsSuccessStatus: 200
+  maxAge: 86400, // Cache preflight por 24 horas
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
+// Aplicar CORS a todas las rutas
 server.use(cors(corsOptions));
-server.options('*', cors(corsOptions));
+
+// Manejar explícitamente las peticiones OPTIONS
+server.options('*', (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || allowedOrigins[0]);
+  res.setHeader('Access-Control-Allow-Methods', corsOptions.methods.join(','));
+  res.setHeader('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(','));
+  res.status(corsOptions.optionsSuccessStatus).end();
+});
 
 const logger = winston.createLogger({
   level: "info",
@@ -68,33 +93,33 @@ const logger = winston.createLogger({
 
 // Middleware
 server.use((req, res, next) => {
-  const startTime = Date.now();
-  const shouldLog = req.method === "GET" || req.method === "POST";
+  // Saltar el logging para peticiones OPTIONS
+  if (req.method === 'OPTIONS') return next();
 
+  const startTime = Date.now();
+  const shouldLog = ['GET', 'POST', 'PUT', 'DELETE'].includes(req.method);
+
+  // Funciones originales
   const originalJson = res.json.bind(res);
   const originalSend = res.send.bind(res);
 
   const logResponse = async (body, methodUsed) => {
     const logData = {
-      timestamp: new Date(),  // Cambié 'marcaDeTiempo' por 'timestamp'
+      timestamp: new Date().toISOString(),
       method: req.method,
       url: req.url,
       status: res.statusCode,
       responseTime: Date.now() - startTime,
-      ip: req.ip || req.connection.remoteAddress,
-      userAgent: req.get("User-Agent"),
+      ip: req.ip || req.headers['x-forwarded-for'] || req.connection.remoteAddress,
+      userAgent: req.get('User-Agent'),
       server: 1,
+      origin: req.get('Origin') || 'none'
     };
 
     try {
       if (shouldLog) {
         await db.collection("logs").add(logData);
-
-        if (res.statusCode >= 400) {
-          logger.error(logData);
-        } else {
-          logger.info(logData);
-        }
+        logger[res.statusCode >= 400 ? 'error' : 'info'](logData);
       }
     } catch (error) {
       console.error("Error al guardar logs:", error);
@@ -107,6 +132,14 @@ server.use((req, res, next) => {
   res.send = (body) => logResponse(body, originalSend);
 
   next();
+});
+
+server.get('/api/cors-test', (req, res) => {
+  res.json({
+    message: 'CORS test successful',
+    origin: req.get('Origin'),
+    allowedOrigins: allowedOrigins
+  });
 });
 
 // Rutas de la API
