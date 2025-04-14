@@ -8,8 +8,7 @@ const speakeasy = require("speakeasy");
 const bcrypt = require("bcryptjs");
 require("dotenv").config();
 
-const allowedOrigins = [
-  'https://front-p-final-1ds7.vercel.app',
+const allowedOrigins = [ 
   'https://front-p-final-chi.vercel.app',
   'https://front-p-final-l0liz.vercel.app',
   'http://localhost:3000'
